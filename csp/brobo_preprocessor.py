@@ -5,6 +5,5 @@ def buildBrobo(data, bladeKerf, savePath, programNum = 1):
             stick[i] = inchToDecimalInch(element)
     
 
-
 def inchToDecimalInch(measurement):
     return float(measurement) * 1000

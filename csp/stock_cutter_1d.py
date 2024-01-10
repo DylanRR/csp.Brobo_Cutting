@@ -46,7 +46,6 @@ def SolVal(x):
     return [SolVal(e) for e in x]
 
 
-
 """
     Retrieve the objective value of a solver solution.
 

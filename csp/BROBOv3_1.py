@@ -164,7 +164,6 @@ def addBladeKerf(cutData, bladeKerf):
     return [[length + bladeKerf, quantity] for length, quantity in cutData]
 
 
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = CutOptimizerApp(root)

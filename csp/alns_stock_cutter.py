@@ -134,7 +134,6 @@ def minimal_wastage(state, random_state):
 
     while len(state.unassigned) != 0:
         beam = state.unassigned.pop(0)
-
         assignment = min(state.assignments, key=partial(insertion_cost, beam=beam))
 
         if beam <= wastage(assignment):
