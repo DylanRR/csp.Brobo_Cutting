@@ -1,7 +1,8 @@
 from asyncio.windows_events import NULL
 import tkinter as tk
 from tkinter import messagebox
-from  stock_cutter_1d import solveCut
+from stock_cutter_1d import solveCut
+from alns_stock_cutter import alnsSolver
 #from ortools.sat.python import cp_model
 
 class CutOptimizerApp:
@@ -12,6 +13,7 @@ class CutOptimizerApp:
         self.stock_length = tk.StringVar()
         self.blade_width = tk.StringVar()
         self.dead_zone = tk.StringVar()
+        self.scale_factor = 100
 
         self.cut_lengths = []
         self.cut_quantities = []
@@ -79,29 +81,88 @@ class CutOptimizerApp:
 
         self.cut_lengths.append(cut_length)
         self.cut_quantities.append(cut_quantity)
+    
+    def get_inputs(self):
+        scale_factor = 100
+        solver = "OR-Tools"
+        stock_length = self.stock_length.get()
+        blade_width = self.blade_width.get()
+        dead_zone = self.dead_zone.get()
+        cut_lengths = [cut_length.get() for cut_length in self.cut_lengths]
+        cut_quantities = [int(cut_quantity.get()) for cut_quantity in self.cut_quantities]
+        return stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, solver, scale_factor
 
+    def uTest(self):
+        scale_factor = 100
+        solver = "ALNS"
+        stock_length = 100
+        blade_width = .25
+        dead_zone = 5
+        cut_lengths = [40, 35, 15, 12, 6, 4]
+        cut_quantities = [4, 9, 6, 4, 8, 12]
+        return stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, solver, scale_factor
+    
 
     def optimize_cuts(self):
         try:
-            scale_factor = 1000
-            stock_length = int(float(self.stock_length.get()) * scale_factor)  # Convert to integer after applying a scale factor
-            blade_width = int(float(self.blade_width.get()) * scale_factor)    # Convert to integer after applying a scale factor
-            dead_zone = int(float(self.dead_zone.get()) * scale_factor)        # Convert to integer after applying a scale factor
-            working_length = stock_length - dead_zone
-            cut_lengths = [int(float(cut_length.get()) * scale_factor) for cut_length in self.cut_lengths]
-            cut_quantities = [int(cut_quantity.get()) for cut_quantity in self.cut_quantities]
-            sorted_pairs = sorted(zip(cut_lengths, cut_quantities), key=lambda pair: pair[0], reverse=True)
-
+            #stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, solver, scale_factor = self.get_inputs()
+            stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, solver, scale_factor = self.uTest()
+            stock_length, blade_width, dead_zone, cut_lengths, zipped_data = solverPreProcess(stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, scale_factor)
             # Call the new solver here
-            consumed_big_rolls = solveCut(sorted_pairs, working_length, blade_width, output_json=False, large_model=True, greedy_model=False, iterAccuracy=500)
+            if solver == "OR-Tools":
+                solution = solveORTools(zipped_data, stock_length)
+                solution = ortoolsPostProcessor(solution, blade_width, scale_factor)
+            elif solver == "ALNS":
+                solution = solveALNS(zipped_data, stock_length)
+                solution = alnsPostProcessor(solution, blade_width, scale_factor)
+            # Print the solution
+            for idx, stick in enumerate(solution, start=1):
+                usage = sum(stick) / (stock_length / scale_factor) * 100
+                print(f"Stick {idx}: {stick}, Usage: {usage:.2f}%")
 
-            # Display the results or perform any further actions
-            for idx, stick in enumerate(consumed_big_rolls):
-                adjusted_lengths = [float(length - blade_width) / scale_factor for length in stick[1]]
-                print(f"Stick {idx + 1}: {adjusted_lengths}")
-
-        except ValueError:
+        except ValueError as e:
+            print(f"Error: {e}")
             messagebox.showerror("Error", "Please enter valid numeric values.")
+
+def solveORTools(zipped_data, stock_length):
+    zipped_data = [[quantity, length] for length, quantity in zipped_data]  # Adjust the format for OR-Tools
+    return solveCut(zipped_data, stock_length, output_json=False, large_model=True, greedy_model=False, iterAccuracy=500)
+
+def solveALNS(zipped_data, stock_length):
+    zipped_data = flattenCutData(zipped_data)
+    return alnsSolver(stock_length, zipped_data, iterations=1000, seed=1234)
+
+def solverPreProcess(stock_length, blade_width, dead_zone, cut_lengths, cut_quantities, scale_factor):
+    stock_length = scaleMeasurement(stock_length, scale_factor)  # Convert to integer after applying a scale factor
+    blade_width = scaleMeasurement(blade_width, scale_factor)    # Convert to integer after applying a scale factor
+    dead_zone = scaleMeasurement(dead_zone, scale_factor)        # Convert to integer after applying a scale factor
+    stock_length = stock_length - dead_zone
+    cut_lengths = [scaleMeasurement(cut_length, scale_factor) for cut_length in cut_lengths]
+    zipped_data = zipCutData(cut_lengths, cut_quantities)
+    zipped_data = addBladeKerf(zipped_data, blade_width)
+    return stock_length, blade_width, dead_zone, cut_lengths, zipped_data
+
+def ortoolsPostProcessor(solution, blade_width, scale_factor):
+    return [[(length - blade_width) / scale_factor for length in stick[1]] for stick in solution]
+
+def alnsPostProcessor(solution, blade_width, scale_factor):
+    return [[(length - blade_width) / scale_factor for length in assignments] for assignments in solution]
+
+def deScaleMeasurement(measurement, scaleFactor):
+    return int(float(measurement) / scaleFactor)
+
+def scaleMeasurement(measurement, scaleFactor):
+    return int(float(measurement) * scaleFactor)
+
+def zipCutData(cut_lengths, cut_quantities):
+    return sorted(zip(cut_lengths, cut_quantities), key=lambda pair: pair[0], reverse=True)
+
+def flattenCutData(cutData):   
+    return [length for (length, quantity) in cutData for _ in range(quantity)]
+
+def addBladeKerf(cutData, bladeKerf):
+    return [[length + bladeKerf, quantity] for length, quantity in cutData]
+
 
 if __name__ == "__main__":
     root = tk.Tk()

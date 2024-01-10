@@ -14,4 +14,3 @@ def get_data(infile:str)->List[float]:
             quan.append(numbers.count(n))
             nr.append(n)
     return list(zip(quan,nr))
-
